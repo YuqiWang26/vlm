@@ -82,10 +82,10 @@ Custom benchmark:
 ```bash
 python run_benchmark.py \
   --methods none,fixed,importance,merging \
-  --ratios 1.0,0.75,0.5,0.25,0.1 \
+  --ratios 1.0,0.75,0.5,0.25,0.1,0.05 \
   --resolutions low,medium,high \
   --num-images 1,2,4 \
-  --samples 3 \
+  --samples 6 \
   --max-new-tokens 64
 ```
 
@@ -186,7 +186,9 @@ Each inference records:
 - `oom`
 - `quality_score`
 
-Toy quality uses keyword matching. Replace this later with VQA-v2, TextVQA, ChartQA, LLaVA-Bench, or GPT-based judging.
+The default benchmark now uses a synthetic stress VQA/OCR dataset with small text, coordinate-table lookup, counting, chart reading, receipt/timetable lookup, and spatial-reference questions. `quality_score` uses `all_keywords_match`: a sample with multiple target values only scores 1.0 when every required value appears in the answer. This stricter metric is meant to make compression-induced accuracy loss visible on a small Colab run.
+
+For a final report, you can still replace or supplement this with VQA-v2, TextVQA, ChartQA, LLaVA-Bench, or GPT-based judging.
 
 ## Current Limitations
 

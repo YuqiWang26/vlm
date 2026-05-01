@@ -72,10 +72,10 @@ def main() -> None:
 
     if args.quick:
         methods = methods or ["none", "fixed", "importance", "merging"]
-        ratios = ratios or [1.0, 0.5]
+        ratios = ratios or [1.0, 0.75, 0.5, 0.25, 0.1, 0.05]
         resolutions = resolutions or ["medium"]
         num_images_values = num_images_values or [1]
-        max_samples = max_samples or 1
+        max_samples = max_samples or 12
         config.setdefault("generation", {})["max_new_tokens"] = min(
             int(config.get("generation", {}).get("max_new_tokens", 64)),
             32,

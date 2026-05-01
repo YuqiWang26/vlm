@@ -16,8 +16,41 @@ def normalize_answer(text: str) -> str:
     return text
 
 
+def compact_answer(text: str) -> str:
+    """Normalize and remove spaces for OCR-like codes such as K7P4 or RX-19."""
+
+    return normalize_answer(text).replace(" ", "")
+
+
+def _contains_keyword(prediction: str, keyword: str) -> bool:
+    normalized_prediction = normalize_answer(prediction)
+    normalized_keyword = normalize_answer(keyword)
+    if not normalized_keyword:
+        return False
+
+    prediction_tokens = normalized_prediction.split()
+    keyword_tokens = normalized_keyword.split()
+
+    # Short numeric answers should match whole tokens. Otherwise "7" would match
+    # "17", which makes counting and table lookup tasks look falsely correct.
+    if len(keyword_tokens) == 1 and keyword_tokens[0].isdigit() and len(keyword_tokens[0]) <= 2:
+        return keyword_tokens[0] in prediction_tokens
+
+    if len(keyword_tokens) == 1 and keyword_tokens[0] in prediction_tokens:
+        return True
+    if f" {normalized_keyword} " in f" {normalized_prediction} ":
+        return True
+
+    compact_prediction = compact_answer(prediction)
+    compact_keyword = compact_answer(keyword)
+    return bool(compact_keyword and compact_keyword in compact_prediction)
+
+
 def exact_match(prediction: str, reference: str) -> float:
-    return float(normalize_answer(prediction) == normalize_answer(reference))
+    return float(
+        normalize_answer(prediction) == normalize_answer(reference)
+        or compact_answer(prediction) == compact_answer(reference)
+    )
 
 
 def keyword_match(
@@ -25,14 +58,47 @@ def keyword_match(
     reference: str = "",
     keywords: Optional[Iterable[str]] = None,
 ) -> float:
-    normalized_prediction = normalize_answer(prediction)
     if keywords is None:
         keywords = [tok for tok in normalize_answer(reference).split() if len(tok) > 2]
     keyword_list = [normalize_answer(keyword) for keyword in keywords if normalize_answer(keyword)]
     if not keyword_list:
         return 0.0
-    hits = sum(1 for keyword in keyword_list if keyword in normalized_prediction)
+    hits = sum(1 for keyword in keyword_list if _contains_keyword(prediction, keyword))
     return hits / len(keyword_list)
+
+
+def all_keywords_match(
+    prediction: str,
+    reference: str = "",
+    keywords: Optional[Iterable[str]] = None,
+) -> float:
+    """Strict VQA-style score for synthetic stress tests.
+
+    A sample with multiple target values only receives 1.0 if every required
+    value appears in the model answer. This makes partial OCR/counting failures
+    visible in the aggregate accuracy curve.
+    """
+
+    if keywords is None:
+        keywords = [tok for tok in normalize_answer(reference).split() if len(tok) > 2]
+    keyword_list = [normalize_answer(keyword) for keyword in keywords if normalize_answer(keyword)]
+    if not keyword_list:
+        return exact_match(prediction, reference)
+    return float(all(_contains_keyword(prediction, keyword) for keyword in keyword_list))
+
+
+def vqa_strict_match(
+    prediction: str,
+    reference: str,
+    keywords: Optional[Iterable[str]] = None,
+) -> float:
+    normalized_prediction = normalize_answer(prediction)
+    normalized_reference = normalize_answer(reference)
+    if normalized_reference and f" {normalized_reference} " in f" {normalized_prediction} ":
+        return 1.0
+    if compact_answer(reference) and compact_answer(reference) in compact_answer(prediction):
+        return 1.0
+    return all_keywords_match(prediction, reference, keywords=keywords)
 
 
 def compute_quality_score(
@@ -45,6 +111,10 @@ def compute_quality_score(
         return exact_match(prediction, reference)
     if metric == "keyword_match":
         return keyword_match(prediction, reference, keywords=keywords)
+    if metric in {"all_keywords", "all_keywords_match"}:
+        return all_keywords_match(prediction, reference, keywords=keywords)
+    if metric in {"vqa_strict", "strict_vqa", "strict"}:
+        return vqa_strict_match(prediction, reference, keywords=keywords)
     raise ValueError(f"Unsupported quality metric: {metric}")
 
 
