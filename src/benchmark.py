@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,6 +78,12 @@ def _draw_centered_text(
     x = left + (right - left - width) / 2
     y = top + (bottom - top - height) / 2 - bbox[1]
     draw.text((x, y), text, fill=fill, font=font)
+
+
+def _keyword(text: str) -> str:
+    """Compact keyword used by the strict VQA scorer for OCR-like targets."""
+
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
 def create_toy_dataset(image_size: int = 1024) -> List[ToySample]:
@@ -489,6 +496,220 @@ def create_toy_dataset(image_size: int = 1024) -> List[ToySample]:
         )
     )
 
+    # 16-23) OCR badges. These vary layout and distractor text while keeping
+    # small, answer-critical codes near different image regions.
+    badge_specs = [
+        ("qa_badge_01", "N5R2", "L8C4", (120, 755, 330, 845), (690, 190, 900, 280)),
+        ("qa_badge_02", "T7M1", "B4Q9", (130, 210, 340, 300), (675, 745, 895, 835)),
+        ("qa_badge_03", "C8V6", "P2D5", (115, 625, 325, 715), (695, 625, 905, 715)),
+        ("qa_badge_04", "R3X7", "H9K2", (400, 150, 620, 240), (400, 775, 620, 865)),
+        ("qa_badge_05", "W6A1", "S4N8", (95, 455, 305, 545), (720, 455, 930, 545)),
+        ("qa_badge_06", "D2L9", "V5Y3", (145, 145, 355, 235), (665, 690, 875, 780)),
+        ("qa_badge_07", "G8P2", "M6T5", (110, 690, 320, 780), (710, 135, 920, 225)),
+        ("qa_badge_08", "F4Z1", "Q9E6", (375, 650, 585, 740), (665, 305, 875, 395)),
+    ]
+    for sample_id, code_a, code_b, box_a, box_b in badge_specs:
+        img = Image.new("RGB", (image_size, image_size), (250, 250, 247))
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([80, 80, 944, 944], outline=(55, 55, 55), width=5)
+        draw.text((115, 110), "Quality-control sheet", fill=(35, 35, 35), font=title_font)
+        draw.text((115, 175), "Only the two colored ID labels are relevant.", fill=(80, 80, 80), font=text_font)
+        draw.text((115, 230), "Other marks: 12, 45, TEMP, PASS", fill=(130, 130, 130), font=small_font)
+        draw.rounded_rectangle(box_a, radius=12, fill=(190, 225, 255), outline=(60, 60, 60), width=4)
+        draw.rounded_rectangle(box_b, radius=12, fill=(255, 238, 165), outline=(60, 60, 60), width=4)
+        _draw_centered_text(draw, box_a, code_a, code_font)
+        _draw_centered_text(draw, box_b, code_b, code_font)
+        samples.append(
+            ToySample(
+                sample_id,
+                img,
+                "Read the blue-label code and the yellow-label code. Answer both codes.",
+                f"{code_a} {code_b}",
+                [_keyword(code_a), _keyword(code_b)],
+            )
+        )
+
+    # 24-29) Receipt/invoice variants with similar distractor amounts.
+    receipt_specs = [
+        ("mini_receipt_a", [("LATTE", "4.75"), ("BAGEL", "3.20"), ("TAX", "0.68")], "0.68", "8.63"),
+        ("mini_receipt_b", [("PEN", "2.40"), ("NOTEBOOK", "5.90"), ("TAX", "0.74")], "0.74", "9.04"),
+        ("mini_receipt_c", [("SOAP", "6.25"), ("TOWEL", "9.10"), ("TAX", "1.38")], "1.38", "16.73"),
+        ("mini_receipt_d", [("TICKET", "12.00"), ("SNACK", "3.45"), ("TAX", "1.24")], "1.24", "16.69"),
+        ("mini_receipt_e", [("BOOK", "8.80"), ("CARD", "2.35"), ("TAX", "0.91")], "0.91", "12.06"),
+        ("mini_receipt_f", [("PAINT", "7.15"), ("BRUSH", "4.65"), ("TAX", "0.99")], "0.99", "12.79"),
+    ]
+    for sample_id, rows, tax, total in receipt_specs:
+        img = Image.new("RGB", (image_size, image_size), (242, 246, 250))
+        draw = ImageDraw.Draw(img)
+        receipt = (265, 90, 670, 825)
+        draw.rectangle(receipt, fill=(255, 255, 255), outline=(35, 35, 35), width=4)
+        draw.text((315, 125), "SMALL RECEIPT", fill=(20, 20, 20), font=title_font)
+        y = 220
+        for item, price in rows:
+            draw.text((305, y), item, fill=(40, 40, 40), font=small_font)
+            draw.text((540, y), price, fill=(40, 40, 40), font=small_font)
+            y += 70
+        draw.line([300, 575, 635, 575], fill=(20, 20, 20), width=3)
+        draw.text((305, 615), "TOTAL", fill=(20, 20, 20), font=text_font)
+        draw.text((520, 615), total, fill=(20, 20, 20), font=text_font)
+        samples.append(
+            ToySample(
+                sample_id,
+                img,
+                "What are the TAX and TOTAL amounts on the receipt? Answer both amounts.",
+                f"{tax} {total}",
+                [_keyword(tax), _keyword(total)],
+            )
+        )
+
+    # 30-35) Counting variants with two colors. Small dots are sensitive to
+    # aggressive image-budget compression and low visual-token retention.
+    grid_specs = [
+        ("dot_count_a", {(0, 0), (1, 2), (2, 4), (3, 1), (4, 3), (5, 5)}, {(0, 5), (2, 1), (3, 4), (5, 0)}),
+        ("dot_count_b", {(0, 2), (1, 1), (1, 5), (2, 3), (4, 0), (5, 2), (5, 4)}, {(0, 4), (2, 0), (3, 3)}),
+        ("dot_count_c", {(0, 1), (0, 4), (2, 2), (3, 0), (3, 5), (4, 4)}, {(1, 3), (2, 5), (4, 1), (5, 3), (5, 5)}),
+        ("dot_count_d", {(0, 3), (1, 0), (1, 4), (2, 1), (3, 3), (4, 5), (5, 2), (5, 4)}, {(0, 0), (2, 4), (4, 2)}),
+        ("dot_count_e", {(1, 1), (1, 2), (2, 4), (3, 0), (3, 2), (4, 3), (5, 1)}, {(0, 5), (2, 0), (2, 2), (4, 5)}),
+        ("dot_count_f", {(0, 0), (0, 5), (1, 3), (2, 1), (3, 4), (4, 2), (5, 0), (5, 5)}, {(1, 1), (2, 5), (3, 2), (4, 4), (5, 3)}),
+    ]
+    for sample_id, blue_cells, red_cells in grid_specs:
+        img = Image.new("RGB", (image_size, image_size), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        draw.text((170, 75), "Count colored dots", fill=(20, 20, 20), font=title_font)
+        left, top, cell = 185, 175, 88
+        for r in range(6):
+            for c in range(6):
+                x0 = left + c * cell
+                y0 = top + r * cell
+                draw.rectangle([x0, y0, x0 + cell - 8, y0 + cell - 8], outline=(185, 185, 185), width=2)
+                color = (210, 210, 210)
+                if (r, c) in blue_cells:
+                    color = (35, 95, 220)
+                elif (r, c) in red_cells:
+                    color = (220, 70, 65)
+                draw.ellipse([x0 + 25, y0 + 25, x0 + 54, y0 + 54], fill=color, outline=(30, 30, 30), width=1)
+        blue_count, red_count = str(len(blue_cells)), str(len(red_cells))
+        samples.append(
+            ToySample(
+                sample_id,
+                img,
+                "How many blue dots and red dots are in the grid? Answer blue count then red count.",
+                f"{blue_count} {red_count}",
+                [blue_count, red_count],
+            )
+        )
+
+    # 36-42) Coordinate lookup tables. Each sample asks for three cells so
+    # partial OCR/layout failures are penalized by the strict metric.
+    table_specs = [
+        ("lookup_table_a", [["A7", "Q2", "M5", "R8"], ["L4", "D9", "T3", "B6"], ["N1", "P8", "C4", "V7"], ["H2", "K5", "S9", "W1"]], [("A", 2), ("C", 3), ("D", 4)]),
+        ("lookup_table_b", [["F1", "G8", "J2", "P5"], ["R4", "X7", "C9", "L3"], ["B6", "T5", "N8", "Q1"], ["V3", "M2", "S4", "K9"]], [("B", 2), ("C", 4), ("D", 1)]),
+        ("lookup_table_c", [["P9", "A3", "Z1", "D6"], ["C5", "R8", "F2", "M7"], ["K4", "L6", "B3", "H9"], ["T1", "V5", "Q8", "N2"]], [("A", 3), ("B", 4), ("D", 2)]),
+        ("lookup_table_d", [["E4", "N7", "Y2", "G5"], ["H8", "W1", "P6", "C3"], ["R2", "D5", "L9", "A6"], ["M4", "S7", "T8", "B1"]], [("A", 1), ("B", 3), ("C", 2)]),
+        ("lookup_table_e", [["K8", "B2", "R5", "N9"], ["T6", "Q4", "V1", "D3"], ["F7", "M8", "S2", "C6"], ["P1", "L5", "H4", "X9"]], [("B", 1), ("C", 4), ("D", 3)]),
+        ("lookup_table_f", [["R1", "C7", "M9", "H2"], ["B8", "L3", "Q5", "S6"], ["T4", "P2", "A8", "V5"], ["D9", "N6", "K1", "F7"]], [("A", 4), ("C", 1), ("D", 2)]),
+        ("lookup_table_g", [["M6", "T9", "B1", "P4"], ["N5", "F8", "R2", "K7"], ["D3", "S6", "L4", "Q8"], ["C2", "H1", "V9", "A5"]], [("A", 2), ("B", 4), ("C", 3)]),
+    ]
+    row_names = ["A", "B", "C", "D"]
+    col_names = ["1", "2", "3", "4"]
+    for sample_id, values, targets in table_specs:
+        img = Image.new("RGB", (image_size, image_size), (252, 252, 250))
+        draw = ImageDraw.Draw(img)
+        draw.text((135, 70), "Coordinate lookup grid", fill=(20, 20, 20), font=title_font)
+        left, top, cell_w, cell_h = 215, 185, 135, 115
+        for c, name in enumerate(col_names):
+            _draw_centered_text(draw, (left + c * cell_w, top - 65, left + (c + 1) * cell_w, top - 12), name, text_font)
+        for r, row_name in enumerate(row_names):
+            _draw_centered_text(draw, (left - 70, top + r * cell_h, left - 12, top + (r + 1) * cell_h), row_name, text_font)
+            for c in range(4):
+                x0 = left + c * cell_w
+                y0 = top + r * cell_h
+                fill = (245, 248, 255) if (r + c) % 2 == 0 else (255, 248, 235)
+                draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], fill=fill, outline=(85, 85, 85), width=2)
+                _draw_centered_text(draw, (x0, y0, x0 + cell_w, y0 + cell_h), values[r][c], tiny_code_font)
+        answers = [values[row_names.index(row)][col - 1] for row, col in targets]
+        target_text = ", ".join(f"{row}{col}" for row, col in targets)
+        samples.append(
+            ToySample(
+                sample_id,
+                img,
+                f"Read the values in cells {target_text}. Answer the three values in that order.",
+                " ".join(answers),
+                [_keyword(answer) for answer in answers],
+            )
+        )
+
+    # 43-46) Bar-chart lookup variants.
+    chart_specs = [
+        ("bar_chart_a", [("blue", (60, 115, 220), 360, "12"), ("green", (40, 150, 95), 510, "19"), ("red", (210, 65, 65), 430, "15"), ("gold", (230, 175, 45), 300, "9")], "green", "19"),
+        ("bar_chart_b", [("cyan", (35, 160, 185), 390, "14"), ("purple", (126, 78, 190), 560, "23"), ("orange", (230, 145, 45), 505, "21"), ("gray", (120, 120, 120), 280, "8")], "purple", "23"),
+        ("bar_chart_c", [("red", (210, 65, 65), 525, "18"), ("blue", (60, 115, 220), 445, "16"), ("green", (40, 150, 95), 585, "22"), ("orange", (230, 145, 45), 335, "11")], "green", "22"),
+        ("bar_chart_d", [("gold", (230, 175, 45), 410, "13"), ("pink", (220, 110, 160), 605, "24"), ("teal", (30, 145, 145), 455, "17"), ("navy", (45, 65, 145), 360, "10")], "pink", "24"),
+    ]
+    for sample_id, bars, answer_color, answer_value in chart_specs:
+        img = Image.new("RGB", (image_size, image_size), (250, 250, 250))
+        draw = ImageDraw.Draw(img)
+        draw.text((125, 70), "Tiny value chart", fill=(20, 20, 20), font=title_font)
+        axis_x, axis_y = 150, 760
+        draw.line([axis_x, 170, axis_x, axis_y], fill=(20, 20, 20), width=4)
+        draw.line([axis_x, axis_y, 830, axis_y], fill=(20, 20, 20), width=4)
+        x = 215
+        for name, color, height, value in bars:
+            draw.rectangle([x, axis_y - height, x + 85, axis_y], fill=color)
+            draw.text((x + 20, axis_y - height - 43), value, fill=(25, 25, 25), font=small_font)
+            draw.text((x - 8, axis_y + 18), name, fill=(25, 25, 25), font=small_font)
+            x += 145
+        samples.append(
+            ToySample(
+                sample_id,
+                img,
+                "Which colored bar has the largest printed value, and what is that value? Answer color and value.",
+                f"{answer_color} {answer_value}",
+                [_keyword(answer_color), answer_value],
+            )
+        )
+
+    # 47-50) Spatial relation variants with labels under small objects.
+    spatial_specs = [
+        ("spatial_left_right_star", "yellow star", "B7", "D2", "the yellow star"),
+        ("spatial_left_right_diamond", "green diamond", "A4", "C9", "the green diamond"),
+        ("spatial_left_right_circle", "blue circle", "L5", "R8", "the blue circle"),
+        ("spatial_left_right_hexagon", "purple hexagon", "M3", "T6", "the purple hexagon"),
+    ]
+    for idx, (sample_id, title_target, left_label, right_label, prompt_target) in enumerate(spatial_specs):
+        img = Image.new("RGB", (image_size, image_size), (238, 245, 255))
+        draw = ImageDraw.Draw(img)
+        draw.text((130, 80), f"Find labels around the {title_target}", fill=(20, 20, 20), font=title_font)
+        centers = [(240, 365), (410, 365), (580, 365), (750, 365)]
+        labels = ["X1", left_label, "T0", right_label]
+        target_idx = 2
+        for obj_idx, (cx, cy) in enumerate(centers):
+            if obj_idx == target_idx:
+                if idx == 0:
+                    points = [(cx, cy - 68), (cx + 20, cy - 22), (cx + 70, cy - 18), (cx + 32, cy + 12), (cx + 44, cy + 62), (cx, cy + 36), (cx - 44, cy + 62), (cx - 32, cy + 12), (cx - 70, cy - 18), (cx - 20, cy - 22)]
+                    draw.polygon(points, fill=(245, 195, 35), outline=(35, 35, 35))
+                elif idx == 1:
+                    draw.polygon([(cx, cy - 65), (cx + 65, cy), (cx, cy + 65), (cx - 65, cy)], fill=(80, 180, 90), outline=(35, 35, 35))
+                elif idx == 2:
+                    draw.ellipse([cx - 60, cy - 60, cx + 60, cy + 60], fill=(60, 150, 230), outline=(35, 35, 35), width=3)
+                else:
+                    draw.regular_polygon((cx, cy, 65), n_sides=6, rotation=30, fill=(130, 80, 185), outline=(35, 35, 35))
+            else:
+                draw.rectangle([cx - 55, cy - 55, cx + 55, cy + 55], fill=(210, 210, 210), outline=(35, 35, 35), width=3)
+            draw.rounded_rectangle([cx - 43, cy + 85, cx + 43, cy + 134], radius=8, fill=(255, 255, 255), outline=(50, 50, 50), width=2)
+            _draw_centered_text(draw, (cx - 43, cy + 85, cx + 43, cy + 134), labels[obj_idx], tiny_code_font)
+        samples.append(
+            ToySample(
+                sample_id,
+                img,
+                f"What labels are under the objects immediately left and right of {prompt_target}? Answer both labels.",
+                f"{left_label} {right_label}",
+                [_keyword(left_label), _keyword(right_label)],
+            )
+        )
+
+    if len(samples) != 50:
+        raise RuntimeError(f"Synthetic benchmark should contain exactly 50 samples, got {len(samples)}.")
     return samples
 
 

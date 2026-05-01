@@ -186,7 +186,7 @@ Each inference records:
 - `oom`
 - `quality_score`
 
-The default benchmark now uses a synthetic stress VQA/OCR dataset with small text, coordinate-table lookup, counting, chart reading, receipt/timetable lookup, and spatial-reference questions. `quality_score` uses `all_keywords_match`: a sample with multiple target values only scores 1.0 when every required value appears in the answer. This stricter metric is meant to make compression-induced accuracy loss visible on a small Colab run.
+The default benchmark now uses a 50-sample synthetic stress VQA/OCR dataset with small text, coordinate-table lookup, counting, chart reading, receipt/timetable lookup, and spatial-reference questions. `quality_score` uses `all_keywords_match`: a sample with multiple target values only scores 1.0 when every required value appears in the answer. This stricter metric is meant to make compression-induced accuracy loss visible on a small Colab run.
 
 For a final report, you can still replace or supplement this with VQA-v2, TextVQA, ChartQA, LLaVA-Bench, or GPT-based judging.
 
