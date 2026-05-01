@@ -124,7 +124,9 @@ This writes:
 
 ```text
 results/latency_vs_retention_ratio.png
+results/latency_savings_vs_retention_ratio.png
 results/memory_vs_retention_ratio.png
+results/memory_savings_vs_retention_ratio.png
 results/quality_vs_retention_ratio.png
 results/efficiency_accuracy_tradeoff.png
 ```

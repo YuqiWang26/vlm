@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolutions", default=None, help="Comma list: low,medium,high")
     parser.add_argument("--num-images", default=None, help="Comma list: 1,2,4")
     parser.add_argument("--samples", type=int, default=None)
+    parser.add_argument("--warmup-runs", type=int, default=None)
     parser.add_argument("--max-new-tokens", type=int, default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--summary-output", default=None)
@@ -60,6 +61,8 @@ def main() -> None:
         config.setdefault("benchmark", {})["output_csv"] = args.output
     if args.summary_output:
         config.setdefault("benchmark", {})["summary_csv"] = args.summary_output
+    if args.warmup_runs is not None:
+        config.setdefault("benchmark", {})["warmup_runs"] = args.warmup_runs
 
     methods = _parse_csv_list(args.methods, str)
     ratios = _parse_csv_list(args.ratios, float)

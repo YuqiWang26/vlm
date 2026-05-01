@@ -153,6 +153,25 @@ class BenchmarkRunner:
         metric = self.quality_config.get("metric", "keyword_match")
         apply_proxy = bool(self.compression_config.get("apply_proxy_image_budget", True))
         max_new_tokens = int(self.config.get("generation", {}).get("max_new_tokens", 64))
+        warmup_runs = int(self.benchmark_config.get("warmup_runs", 1))
+
+        if warmup_runs > 0:
+            warmup_case = build_multi_image_case(dataset, 0, 1)
+            warmup_tokens = min(max_new_tokens, 16)
+            print(f"Running {warmup_runs} warmup inference(s), not recorded...")
+            for _ in range(warmup_runs):
+                try:
+                    self.engine.generate_answer(
+                        image=warmup_case["images"],
+                        question=warmup_case["question"],
+                        compression_method="none",
+                        retention_ratio=1.0,
+                        image_resolution=resolutions[0],
+                        max_new_tokens=warmup_tokens,
+                    )
+                except Exception as exc:
+                    print(f"Warmup failed; continuing to recorded benchmark. Error: {exc}")
+                    break
 
         progress = tqdm(total=total, desc="Benchmark")
         for method_name in methods:

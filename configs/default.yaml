@@ -39,6 +39,7 @@ benchmark:
   image_resolutions: [low, medium, high]
   num_images: [1, 2, 4]
   max_samples: 3
+  warmup_runs: 1
   output_csv: results/benchmark_results.csv
   summary_csv: results/summary_results.csv
 
