@@ -62,13 +62,13 @@ pip install -U git+https://github.com/huggingface/transformers accelerate
 From the project root:
 
 ```bash
-python run_benchmark.py --quick
+python run_benchmark.py --quick --dtype fp16 --attn-implementation eager
 ```
 
 Fallback to the smaller model:
 
 ```bash
-python run_benchmark.py --quick --model-id Qwen/Qwen2-VL-2B-Instruct --dtype fp16
+python run_benchmark.py --quick --model-id Qwen/Qwen2-VL-2B-Instruct --dtype fp16 --attn-implementation eager
 ```
 
 Full default benchmark:

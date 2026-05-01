@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--model-id", default=None, help="Override model.model_id.")
     parser.add_argument("--dtype", default=None, help="Override model dtype: bf16, fp16, float32, auto.")
+    parser.add_argument(
+        "--attn-implementation",
+        default=None,
+        choices=["eager", "sdpa", "flash_attention_2", "flash_attention_3"],
+        help="Override attention backend. Use eager if Colab/PyTorch SDPA kernels fail.",
+    )
     parser.add_argument("--methods", default=None, help="Comma list: none,fixed,importance,merging")
     parser.add_argument("--ratios", default=None, help="Comma list, e.g. 1.0,0.75,0.5,0.25,0.1")
     parser.add_argument("--resolutions", default=None, help="Comma list: low,medium,high")
@@ -46,6 +52,8 @@ def main() -> None:
         config.setdefault("model", {})["model_id"] = args.model_id
     if args.dtype:
         config.setdefault("model", {})["dtype"] = args.dtype
+    if args.attn_implementation:
+        config.setdefault("model", {})["attn_implementation"] = args.attn_implementation
     if args.max_new_tokens:
         config.setdefault("generation", {})["max_new_tokens"] = args.max_new_tokens
     if args.output:

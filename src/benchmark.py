@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
@@ -180,6 +181,7 @@ class BenchmarkRunner:
                                 "success": False,
                                 "oom": False,
                                 "error": "",
+                                "error_traceback": "",
                                 "proxy_image_budget": apply_proxy,
                                 "generated_answer": "",
                                 "latency_ms": None,
@@ -220,16 +222,28 @@ class BenchmarkRunner:
                                     }
                                 )
                             except torch.cuda.OutOfMemoryError as exc:
-                                record.update({"oom": True, "error": str(exc)})
+                                record.update(
+                                    {
+                                        "oom": True,
+                                        "error": str(exc),
+                                        "error_traceback": traceback.format_exc(),
+                                    }
+                                )
                                 if torch.cuda.is_available():
                                     torch.cuda.empty_cache()
                             except RuntimeError as exc:
                                 message = str(exc)
-                                record.update({"oom": "out of memory" in message.lower(), "error": message})
+                                record.update(
+                                    {
+                                        "oom": "out of memory" in message.lower(),
+                                        "error": message,
+                                        "error_traceback": traceback.format_exc(),
+                                    }
+                                )
                                 if record["oom"] and torch.cuda.is_available():
                                     torch.cuda.empty_cache()
                             except Exception as exc:
-                                record.update({"error": repr(exc)})
+                                record.update({"error": repr(exc), "error_traceback": traceback.format_exc()})
 
                             records.append(record)
                             if save_every > 0 and len(records) % save_every == 0:
