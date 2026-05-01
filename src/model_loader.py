@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MethodType
 from typing import Any, Dict, List, Optional, Sequence
 
 import torch
@@ -89,6 +90,51 @@ def _from_pretrained_with_retries(model_cls: Any, model_id: str, kwargs: Dict[st
     raise RuntimeError(f"Could not load {model_id}: {last_error}") from last_error
 
 
+def _patch_qwen_grid_split_sizes_to_cpu(model: torch.nn.Module) -> None:
+    """Avoid CUDA NVRTC JIT for tiny `image_grid_thw.prod()` metadata reductions.
+
+    Some Colab runtimes can load and run Qwen2.5-VL but fail on CUDA int64
+    reductions with:
+        nvrtc: failed to open libnvrtc-builtins.so.13.0
+
+    Hugging Face Qwen computes split sizes as `image_grid_thw.prod(-1)` after
+    the visual encoder. This patch keeps visual compute on GPU and only moves the
+    small THW metadata tensor to CPU for split-size arithmetic.
+    """
+
+    inner_model = getattr(model, "model", None)
+    if inner_model is None or getattr(inner_model, "_vlm_cpu_grid_split_patch", False):
+        return
+    if not hasattr(inner_model, "visual") or not hasattr(inner_model, "get_image_features"):
+        return
+
+    def get_image_features_cpu_split(self, pixel_values, image_grid_thw=None, **kwargs):
+        pixel_values = pixel_values.type(self.visual.dtype)
+        vision_outputs = self.visual(pixel_values, grid_thw=image_grid_thw, **kwargs)
+        split_sizes = (
+            image_grid_thw.detach().cpu().prod(dim=-1) // self.visual.spatial_merge_size**2
+        ).tolist()
+        image_embeds = torch.split(vision_outputs.pooler_output, split_sizes)
+        vision_outputs.pooler_output = image_embeds
+        return vision_outputs
+
+    inner_model.get_image_features = MethodType(get_image_features_cpu_split, inner_model)
+    inner_model._vlm_cpu_grid_split_patch = True
+
+    if hasattr(inner_model, "get_video_features"):
+        def get_video_features_cpu_split(self, pixel_values_videos, video_grid_thw=None, **kwargs):
+            pixel_values_videos = pixel_values_videos.type(self.visual.dtype)
+            vision_outputs = self.visual(pixel_values_videos, grid_thw=video_grid_thw, **kwargs)
+            split_sizes = (
+                video_grid_thw.detach().cpu().prod(dim=-1) // self.visual.spatial_merge_size**2
+            ).tolist()
+            video_embeds = torch.split(vision_outputs.pooler_output, split_sizes)
+            vision_outputs.pooler_output = video_embeds
+            return vision_outputs
+
+        inner_model.get_video_features = MethodType(get_video_features_cpu_split, inner_model)
+
+
 class VLMEngine:
     """Thin wrapper around HF VLMs with compression-aware input preparation."""
 
@@ -140,6 +186,7 @@ class VLMEngine:
                     trust_remote_code=trust_remote_code,
                 )
                 self.model.eval()
+                _patch_qwen_grid_split_sizes_to_cpu(self.model)
                 self.model_id = model_id
                 self.device = get_first_model_device(self.model)
                 print(f"Loaded {model_id} on first device: {self.device}")

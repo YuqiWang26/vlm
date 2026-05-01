@@ -193,7 +193,10 @@ def estimate_qwen_visual_tokens_from_inputs(inputs: Any, image_token_id: int | N
     if hasattr(inputs, "image_grid_thw"):
         grid = inputs.image_grid_thw
         if grid is not None and torch.is_tensor(grid):
-            return int(torch.prod(grid, dim=-1).sum().item())
+            # Keep this tiny metadata reduction on CPU. Some Colab/PyTorch
+            # combinations try to JIT-compile int64 CUDA reductions via NVRTC
+            # and fail when libnvrtc-builtins is unavailable.
+            return int(grid.detach().cpu().prod(dim=-1).sum().item())
 
     if isinstance(inputs, dict):
         input_ids = inputs.get("input_ids")
@@ -201,7 +204,7 @@ def estimate_qwen_visual_tokens_from_inputs(inputs: Any, image_token_id: int | N
             return int((input_ids == image_token_id).sum().item())
         grid = inputs.get("image_grid_thw")
         if torch.is_tensor(grid):
-            return int(torch.prod(grid, dim=-1).sum().item())
+            return int(grid.detach().cpu().prod(dim=-1).sum().item())
 
     return None
 
