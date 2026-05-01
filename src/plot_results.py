@@ -10,8 +10,43 @@ import pandas as pd
 
 
 def _successful_grouped(df: pd.DataFrame) -> pd.DataFrame:
+    required = {
+        "compression_method",
+        "retention_ratio",
+        "latency_ms",
+        "peak_gpu_memory_mb",
+        "quality_score",
+        "throughput_tokens_per_second",
+    }
+    missing = sorted(required - set(df.columns))
+    if missing:
+        print(f"Cannot plot: results CSV is missing columns: {missing}")
+        return pd.DataFrame(
+            columns=[
+                "compression_method",
+                "retention_ratio",
+                "latency_ms",
+                "memory_mb",
+                "quality_score",
+                "throughput",
+            ]
+        )
+
     if "success" in df.columns:
         df = df[df["success"].astype(bool)]
+    if df.empty:
+        print("Cannot plot: no successful benchmark rows found.")
+        return pd.DataFrame(
+            columns=[
+                "compression_method",
+                "retention_ratio",
+                "latency_ms",
+                "memory_mb",
+                "quality_score",
+                "throughput",
+            ]
+        )
+
     return (
         df.groupby(["compression_method", "retention_ratio"], dropna=False)
         .agg(
@@ -55,6 +90,29 @@ def plot_all(
     output_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(results_csv)
     grouped = _successful_grouped(df)
+    if grouped.empty:
+        if "error" in df.columns:
+            failed = df[df["success"].astype(bool) == False] if "success" in df.columns else df  # noqa: E712
+            if not failed.empty:
+                print("\nFirst benchmark errors:")
+                print(
+                    failed[
+                        [
+                            col
+                            for col in [
+                                "compression_method",
+                                "retention_ratio",
+                                "sample_id",
+                                "oom",
+                                "error",
+                            ]
+                            if col in failed.columns
+                        ]
+                    ]
+                    .head(5)
+                    .to_string(index=False)
+                )
+        return []
 
     outputs = []
     latency_path = output_dir / "latency_vs_retention_ratio.png"

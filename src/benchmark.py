@@ -181,6 +181,18 @@ class BenchmarkRunner:
                                 "oom": False,
                                 "error": "",
                                 "proxy_image_budget": apply_proxy,
+                                "generated_answer": "",
+                                "latency_ms": None,
+                                "peak_gpu_memory_mb": None,
+                                "throughput_tokens_per_second": None,
+                                "generated_tokens": None,
+                                "quality_score": None,
+                                "number_of_visual_tokens": None,
+                                "original_visual_tokens": None,
+                                "kept_visual_tokens": None,
+                                "compression_applied_internal": False,
+                                "original_seq_len": None,
+                                "compressed_seq_len": None,
                             }
                             try:
                                 reset_peak_gpu_memory()
